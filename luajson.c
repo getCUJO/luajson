@@ -48,7 +48,7 @@
 
 static void decode_value(lua_State *, char **, int);
 static void decode_string(lua_State *, char **);
-static void encode(lua_State *, luaL_Buffer *);
+static void encode(lua_State *, luaL_Buffer *, int);
 
 static jmp_buf env;
 
@@ -483,26 +483,28 @@ encode_string(lua_State *L, luaL_Buffer *b, unsigned char *s)
 }
 
 static void
-encode(lua_State *L, luaL_Buffer *b)
+encode(lua_State *L, luaL_Buffer *b, int arg)
 {
-	int e, t, n, m;
+	int n;
 
-	switch (lua_type(L, -1)) {
+	switch (lua_type(L, arg)) {
 	case LUA_TBOOLEAN:
-		luaL_addstring(b, lua_toboolean(L, -1) ? "true" : "false");
-		lua_pop(L, 1);
+		luaL_addstring(b, lua_toboolean(L, arg) ? "true" : "false");
+		lua_remove(L, arg);
 		break;
 	case LUA_TNUMBER:
+		lua_pushvalue(L, arg);
 		luaL_addvalue(b);
+		lua_remove(L, arg);
 		break;
 	case LUA_TSTRING:
-		encode_string(L, b, (unsigned char *)lua_tostring(L, -1));
-		lua_pop(L, 1);
+		encode_string(L, b, (unsigned char *)lua_tostring(L, arg));
+		lua_remove(L, arg);
 		break;
 	case LUA_TTABLE:
 		/* check if this is the null value */
 		luaL_checkstack(L, 2, "out of stack space");
-		if (lua_getmetatable(L, -1)) {
+		if (lua_getmetatable(L, arg)) {
 			luaL_getmetatable(L, JSON_NULL_METATABLE);
 #if LUA_VERSION_NUM >= 502
 			if (lua_compare(L, -2, -1, LUA_OPEQ)) {
@@ -517,66 +519,54 @@ encode(lua_State *L, luaL_Buffer *b)
 			lua_pop(L, 2);
 		}
 		/* if there are t[1] .. t[n], output them as array */
-		n = 0;
-		e = 1;
-		t = lua_gettop(L);
-		for (m = 1; ; m++) {
-			lua_geti(L, t, m);
+		for (n = 0; ; n++) {
+			lua_geti(L, arg, n + 1);
 			if (lua_isnil(L, -1)) {
 				lua_pop(L, 1);
 				break;
 			}
+			lua_insert(L, arg + 1);
 			luaL_addchar(b, n ? ',' : '[');
-			encode(L, b);
-			n++;
+			encode(L, b, arg + 1);
 		}
 		if (n) {
 			luaL_addchar(b, ']');
-			lua_pop(L, 1);
-			e = 0;
+			lua_remove(L, arg);
 			break;
 		}
 
 		/* output non-numerical indices as object */
-		t = lua_gettop(L);
 		lua_pushnil(L);
 		n = 0;
-		while (lua_next(L, t) != 0) {
-			int key /*, value */;
-
-			key = lua_absindex(L, -2);
-			/* value = lua_absindex(L, -1); */
-
+		while (lua_next(L, arg) != 0) {
 			if (lua_type(L, -2) == LUA_TNUMBER) {
 				lua_pop(L, 1);
 				continue;
 			}
+			lua_insert(L, arg + 1); /* value */
+			lua_insert(L, arg + 1); /* key */
 			luaL_addstring(b, n ? ",\"" : "{\"");
-			luaL_addstring(b, lua_tostring(L, -2));
+			luaL_addstring(b, lua_tostring(L, arg + 1));
 			luaL_addstring(b, "\":");
-			encode(L, b);
-			lua_pushvalue(L, key);
-			/* lua_remove(L, value); */
-			/* lua_remove(L, key); */
+			encode(L, b, arg + 2);
+			lua_pushvalue(L, arg + 1); /* key */
+			lua_remove(L, arg + 1);
 			n++;
 		}
-		if (n) {
+		if (n)
 			luaL_addchar(b, '}');
-			e = 0;
-		}
-
-		if (e)
+		else
 			luaL_addstring(b, "[]");
-		lua_pop(L, 1);
+		lua_remove(L, arg);
 		break;
 	case LUA_TNIL:
 		luaL_addstring(b, "null");
-		lua_pop(L, 1);
+		lua_remove(L, arg);
 		break;
 	default:
 		json_error(L, "Lua type %s is incompatible with JSON",
-		    luaL_typename(L, -1));
-		lua_pop(L, 1);
+		    luaL_typename(L, arg));
+		lua_remove(L, arg);
 	}
 }
 
@@ -584,9 +574,10 @@ static int
 json_encode(lua_State *L)
 {
 	luaL_Buffer b;
+	int arg = lua_gettop(L);
 
 	luaL_buffinit(L, &b);
-	encode(L, &b);
+	encode(L, &b, arg);
 	luaL_pushresult(&b);
 	return 1;
 }
