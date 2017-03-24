@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2017, CUJO LLC.
  * Copyright (c) 2011 - 2016, Micro Systems Marc Balmer, CH-5073 Gipf-Oberfrick
  * All rights reserved.
  *
@@ -36,74 +37,20 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+#ifndef _KERNEL
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
+#endif
 
 #define JSON_NULL_METATABLE 	"JSON null object methods"
-#define JSON_GCMEM_METATABLE	"JSON garbage collected memory"
 
 static void decode_value(lua_State *, char **, int);
 static void decode_string(lua_State *, char **);
 static void encode(lua_State *, luaL_Buffer *, int);
-
-static jmp_buf env;
-
-/*
- * Garbage collected memory
- */
-static void *
-gcmalloc(lua_State *L, size_t size)
-{
-	void **p;
-	p = lua_newuserdata(L, size);
-	*p = NULL;
-	luaL_setmetatable(L, JSON_GCMEM_METATABLE);
-	return p;
-}
-
-/* Memory can be free'ed immediately or left to the garbage collector */
-static void
-gcfree(void *p)
-{
-	void **mem = (void **)p;
-	free(*mem);
-	*mem = NULL;
-}
-
-static int
-gcmem_clear(lua_State *L)
-{
-	void **p = luaL_checkudata(L, 1, JSON_GCMEM_METATABLE);
-
-	free(*p);
-	*p = NULL;
-	return 0;
-}
-
-static int
-json_error(lua_State *L, const char *fmt, ...)
-{
-	va_list ap;
-	int len;
-	char **msg;
-
-	msg = gcmalloc(L, sizeof(char *));
-	va_start(ap, fmt);
-	len = vasprintf((char **)msg, fmt, ap);
-	va_end(ap);
-
-	lua_pushnil(L);
-	if (len != -1) {
-		lua_pushstring(L, *msg);
-		gcfree(msg);
-	} else
-		lua_pushstring(L, "internal error: vasprintf failed");
-	longjmp(env, 0);
-}
 
 static unsigned int
 digit2int(lua_State *L, const unsigned char digit)
@@ -117,7 +64,7 @@ digit2int(lua_State *L, const unsigned char digit)
 	else if (digit >= 'A' || digit <= 'F')
 		val = digit - 'A' + 10;
 	else
-		json_error(L, "Invalid hex digit");
+		luaL_error(L, "Invalid hex digit");
 	return val;
 }
 
@@ -191,7 +138,7 @@ decode_array(lua_State *L, char **s, int null)
 	if (**s == ']')
 		(*s)++;
 	else
-		json_error(L, "array does not end with ']'");
+		luaL_error(L, "array does not end with ']'");
 }
 
 static void
@@ -209,7 +156,7 @@ decode_object(lua_State *L, char **s, int null)
 			decode_string(L, s);
 			skip_ws(s);
 			if (**s != ':')
-				json_error(L, "object lacks separator ':'");
+				luaL_error(L, "object lacks separator ':'");
 			(*s)++;
 			skip_ws(s);
 			decode_value(L, s, null);
@@ -226,7 +173,7 @@ decode_object(lua_State *L, char **s, int null)
 	if (**s == '}')
 		(*s)++;
 	else
-		json_error(L, "objects does not end with '}'");
+		luaL_error(L, "objects does not end with '}'");
 }
 
 static void
@@ -292,7 +239,7 @@ decode_string(lua_State *L, char **s)
 				(*s) += 6;
 				break;
 			default:
-				json_error(L, "invalid escape character");
+				luaL_error(L, "invalid escape character");
 				break;
 			}
 		} else if (nextEscape != NULL) {
@@ -337,6 +284,7 @@ decode_value(lua_State *L, char **s, int null)
 		*s += 4;
 	} else if (isdigit(**s) || **s == '+' || **s == '-') {
 		char *p = *s;
+#ifndef _KERNEL
 		int isfloat = 0;
 
 		/* advance pointer past the number */
@@ -344,12 +292,17 @@ decode_value(lua_State *L, char **s, int null)
 		    || **s == 'e' || **s == 'E' || **s == '.') {
 		    	if (**s == 'e' || **s == 'E' || **s == '.')
 		    		isfloat = 1;
+#else
+		while (isdigit(**s)) {
+#endif
 			(*s)++;
 		}
+#ifndef _KERNEL
 		if (isfloat)
-			lua_pushnumber(L, atof(p));
+			lua_pushnumber(L, strtod(p, NULL));
 		else
-			lua_pushinteger(L, atol(p));
+#endif
+			lua_pushinteger(L, strtoll(p, NULL, 10));
 	} else {
 		switch (**s) {
 		case '[':
@@ -365,7 +318,7 @@ decode_value(lua_State *L, char **s, int null)
 			lua_pushnil(L);
 			break;
 		default:
-			json_error(L, "syntax error");
+			luaL_error(L, "syntax error");
 			break;
 		}
 	}
@@ -387,11 +340,8 @@ json_decode(lua_State *L)
 
 	null = luaL_checkoption(L, 2, "json-null", options);
 
-	if (!setjmp(env)) {
-		decode_value(L, &s, null);
-		return 1;
-	} else
-		return 2;
+	decode_value(L, &s, null);
+	return 1;
 }
 
 /* encode JSON */
@@ -547,7 +497,7 @@ encode(lua_State *L, luaL_Buffer *b, int arg)
 		lua_remove(L, arg);
 		break;
 	default:
-		json_error(L, "Lua type %s is incompatible with JSON",
+		luaL_error(L, "Lua type %s is incompatible with JSON",
 		    luaL_typename(L, arg));
 		lua_remove(L, arg);
 	}
@@ -645,13 +595,9 @@ luaopen_json(lua_State* L)
 	}
 	lua_setmetatable(L, -2);
 
-	if (luaL_newmetatable(L, JSON_GCMEM_METATABLE)) {
-		lua_pushliteral(L, "__gc");
-		lua_pushcfunction(L, gcmem_clear);
-		lua_settable(L, -3);
-	}
-	lua_pop(L, 1);
-
 	lua_setfield(L, -2, "null");
 	return 1;
 }
+#ifdef _KERNEL
+EXPORT_SYMBOL(luaopen_json);
+#endif
