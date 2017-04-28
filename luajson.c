@@ -233,8 +233,9 @@ static void
 decode_string(lua_State *L, char **s)
 {
 	size_t len;
-	char *newstr = NULL, *newc, *beginning, *end, *nextEscape = NULL;
+	char *beginning, *end, *nextEscape = NULL;
 	char utfbuf[4] = "";
+	luaL_Buffer b;
 
 	luaL_checkstack(L, 1, "Out of stack space");
 	(*s)++;
@@ -246,11 +247,7 @@ decode_string(lua_State *L, char **s)
 	if (end == NULL)
 		return;
 	*s = beginning;
-	len = strlen(*s);
-	if ((newstr = malloc(len + 1)) == NULL)
-		json_error(L, "memory error");
-	memset(newstr, 0, len + 1);
-	newc = newstr;
+	luaL_buffinit(L, &b);
 	while (*s != end) {
 		nextEscape = strchr(*s, '\\');
 		if (nextEscape > end)
@@ -258,50 +255,40 @@ decode_string(lua_State *L, char **s)
 		if (nextEscape == *s) {
 			switch (*((*s) + 1)) {
 			case '"':
-				*newc = '"';
-				newc++;
+				luaL_addchar(&b, '"');
 				(*s) += 2;
 				break;
 			case '\\':
-				*newc = '\\';
-				newc++;
+				luaL_addchar(&b, '\\');
 				(*s) += 2;
 				break;
 			case '/':
-				*newc = '/';
-				newc++;
+				luaL_addchar(&b, '/');
 				(*s) += 2;
 				break;
 			case 'b':
-				*newc = '\b';
-				newc++;
+				luaL_addchar(&b, '\b');
 				(*s) += 2;
 				break;
 			case 'f':
-				*newc = '\f';
-				newc++;
+				luaL_addchar(&b, '\f');
 				(*s) += 2;
 				break;
 			case 'n':
-				*newc = '\n';
-				newc++;
+				luaL_addchar(&b, '\n');
 				(*s) += 2;
 				break;
 			case 'r':
-				*newc = '\r';
-				newc++;
+				luaL_addchar(&b, '\r');
 				(*s) += 2;
 				break;
 			case 't':
-				*newc = '\t';
-				newc++;
+				luaL_addchar(&b, '\t');
 				(*s) += 2;
 				break;
 			case 'u':
 				code2utf8(L, (unsigned char *)(*s) + 2, utfbuf);
-				len = strlen(utfbuf);
-				strcpy(newc, utfbuf);
-				newc += len;
+				luaL_addstring(&b, utfbuf);
 				(*s) += 6;
 				break;
 			default:
@@ -310,20 +297,16 @@ decode_string(lua_State *L, char **s)
 			}
 		} else if (nextEscape != NULL) {
 			len = nextEscape - *s;
-			strncpy(newc, *s, len);
-			newc += len;
+			luaL_addlstring(&b, *s, len);
 			(*s) += len;
 		} else {
 			len = end - *s;
-			strncpy(newc, *s, len);
-			newc += len;
+			luaL_addlstring(&b, *s, len);
 			(*s) += len;
 		}
 	}
-	*newc = 0;
-	lua_pushstring(L, newstr);
+	luaL_pushresult(&b);
 	(*s)++;
-	free(newstr);
 }
 
 static void
