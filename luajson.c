@@ -439,11 +439,7 @@ encode(lua_State *L, luaL_Buffer *b, int arg)
 		luaL_checkstack(L, 2, "out of stack space");
 		if (lua_getmetatable(L, arg)) {
 			luaL_getmetatable(L, JSON_NULL_METATABLE);
-#if LUA_VERSION_NUM >= 502
 			if (lua_compare(L, -2, -1, LUA_OPEQ)) {
-#else
-			if (lua_equal(L, -2, -1)) {
-#endif
 				lua_pop(L, 2);
 				luaL_addstring(b, "null");
 				lua_pop(L, 1);
@@ -520,11 +516,7 @@ json_isnull(lua_State *L)
 {
 	if (lua_getmetatable(L, -1)) {
 		luaL_getmetatable(L, JSON_NULL_METATABLE);
-#if LUA_VERSION_NUM >= 502
 		if (lua_compare(L, -2, -1, LUA_OPEQ)) {
-#else
-		if (lua_equal(L, -2, -1)) {
-#endif
 			lua_pop(L, 2);
 			lua_pushboolean(L, 1);
 			goto done;
@@ -573,21 +565,13 @@ luaopen_json(lua_State* L)
 		{ NULL,		NULL }
 	};
 
-#if LUA_VERSION_NUM >= 502
 	luaL_newlib(L, methods);
-#else
-	luaL_register(L, "json", methods);
-#endif
 	json_set_info(L);
 
 	lua_newtable(L);
 	/* The null metatable */
 	if (luaL_newmetatable(L, JSON_NULL_METATABLE)) {
-#if LUA_VERSION_NUM >= 502
 		luaL_setfuncs(L, null_methods, 0);
-#else
-		luaL_register(L, NULL, null_methods);
-#endif
 		lua_pushliteral(L, "__metatable");
 		lua_pushliteral(L, "must not access this metatable");
 		lua_settable(L, -3);
