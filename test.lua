@@ -42,3 +42,4 @@ local foo2 = json.decode(str)
 print(json.encode(foo2)) -- {"name":"lol",age:-1500000,"foo":"omg :D"}
 print(json.encode(nil))
 print(json.encode(function () print('foo') end))
+print(json.encode())

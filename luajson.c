@@ -503,10 +503,10 @@ static int
 json_encode(lua_State *L)
 {
 	luaL_Buffer b;
-	int arg = lua_gettop(L);
 
+	luaL_checkany(L, 1);
 	luaL_buffinit(L, &b);
-	encode(L, &b, arg);
+	encode(L, &b, 1);
 	luaL_pushresult(&b);
 	return 1;
 }
