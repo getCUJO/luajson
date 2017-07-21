@@ -1,3 +1,2 @@
-EXTRA_CFLAGS += -Ilib/lunatik/lua -Ilib/luajson/ -D_KERNEL \
-	-Dstrtoll=simple_strtoll
+EXTRA_CFLAGS += -D_KERNEL -Dstrtoll=simple_strtoll
 obj-y +=	luajson.o
