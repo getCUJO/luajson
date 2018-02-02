@@ -338,6 +338,11 @@ json_decode(lua_State *L)
 
 	s = (char *)luaL_checkstring(L, 1);
 
+	if (strlen(s) == 0) {
+		lua_pushnil(L);
+		return 1;
+	}
+
 	null = luaL_checkoption(L, 2, "json-null", options);
 
 	decode_value(L, &s, null);
