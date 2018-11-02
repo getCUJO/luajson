@@ -583,5 +583,21 @@ luaopen_json(lua_State* L)
 	return 1;
 }
 #ifdef _KERNEL
+#include <linux/module.h>
+
+int
+__init modinit(void)
+{
+	return 0;
+}
+
+void
+__exit modexit(void)
+{
+}
+
+module_init(modinit);
+module_exit(modexit);
+
 EXPORT_SYMBOL(luaopen_json);
 #endif
