@@ -598,6 +598,7 @@ __exit modexit(void)
 
 module_init(modinit);
 module_exit(modexit);
+MODULE_ALIAS("luajson");
 
 EXPORT_SYMBOL(luaopen_json);
 #endif
