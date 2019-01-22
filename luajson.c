@@ -600,4 +600,5 @@ module_init(modinit);
 module_exit(modexit);
 
 EXPORT_SYMBOL(luaopen_json);
+MODULE_LICENSE("Dual MIT/GPL");
 #endif
